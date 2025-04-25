@@ -7,9 +7,10 @@ def init_db():
         conn.execute('''
             CREATE TABLE IF NOT EXISTS observations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id TEXT,
                 device_name TEXT,
                 asset_id TEXT,
-                asset_name TEXT,
+                pile_id TEXT,
                 variable TEXT,
                 mean_value REAL,
                 date TEXT,

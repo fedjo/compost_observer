@@ -10,7 +10,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 import datetime
 from device_config import DEVICES
 
-from farm_calendar import login_to_fc, get_compost_operation_id, post_observation_to_fc,
+from farm_calendar import login_to_fc, get_compost_operation_id, post_observation_to_fc
 
 
 # Load environment
@@ -100,21 +100,21 @@ def create_observation_payload(key, avg):
     observed_property = ""
     unit = ""
 
-    if "TEMP" in key:  # For temperature
+    if any(e in key for e in ("TEMP" or "temperature")):  # For temperature
         observed_property = "https://vocab.nerc.ac.uk/standard_name/air_temperature/"
         unit = "http://qudt.org/vocab/unit/DEG_C"
         activity_type_id = f'{TEMP_ACTIVITY_TYPE_ID}'
-    elif "water" in key:  # For humidity
+    elif any(e in key for e in ("water" or "moisture")):  # For humidity
         observed_property = "http://vocab.nerc.ac.uk/standard_name/moisture_content_of_soil_layer/"
         unit = "http://qudt.org/vocab/unit/PERCENT"
         activity_type_id = f'{HUMIDITY_ACTIVITY_TYPE_ID}'
-    elif "PH" in key:  # For pH
+    elif any(e in key for e in  ("PH"  "pH")):  # For pH
         observed_property = "http://vocab.nerc.ac.uk/standard_name/pH_of_soil_layer/"
         unit = "http://qudt.org/vocab/unit/UNITLESS"
         activity_type_id = f'{PH_ACTIVITY_TYPE_ID}'
 
     # Create the payload
-    phenomenon_time = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    phenomenon_time = datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H:%MZ')
     payload = {
         "@type": "Observation",
         "observedProperty": observed_property,
@@ -129,20 +129,21 @@ def create_observation_payload(key, avg):
     return payload
 
 
-def insert_observation(payload, device_name, sent):
+def insert_observation(payload, device_id, device_name, pile_id, assset_name, sent):
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
             '''
-            INSERT INTO observations (device_name, asset_id, asset_name, variable, mean_value, date, sent)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO observations (device_id, device_name, asset_id, pile_id, variable, mean_value, date, sent)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             (
+                device_id,
                 device_name,
-                payload["assetId"],
-                payload["assetName"],
-                payload["variable"],
-                payload["meanValue"],
-                payload["date"],
+                pile_id,
+                assset_name,
+                payload["observedProperty"],
+                payload["hasResult"]["hasValue"],
+                payload["phenomenonTime"],
                 int(sent)
             )
         )
@@ -160,19 +161,22 @@ def try_send(payload):
 
 
 def resend_unsent():
+    # Login to Farm Calendar and get the JWT token
+    fc_token = login_to_fc()
+    if not fc_token:
+        logging.error("Farm Calendar login failed. Skipping posting observations.")
+        return
+
     with sqlite3.connect(DB_PATH) as conn:
         rows = conn.execute("SELECT * FROM observations WHERE sent = 0").fetchall()
         for row in rows:
-            payload = {
-                "assetId": row[2],
-                "assetName": row[3],
-                "variable": row[4],
-                "meanValue": row[5],
-                "date": row[6]
-            }
-            if try_send(payload):
+            payload = create_observation_payload(row[5], row[6])
+            payload["phenomenonTime"] = row[7]
+            print(payload)
+
+            if post_observation_to_fc(row[4], payload, fc_token):
                 conn.execute("UPDATE observations SET sent = 1 WHERE id = ?", (row[0],))
-                logging.info(f"Resent: {row[1]} - {row[4]}")
+                logging.info(f"Resent: {row[1]} - {row[5]}")
 
 
 def process_devices():
@@ -188,7 +192,7 @@ def process_devices():
         return
 
     try:
-        # resend_unsent()
+        resend_unsent()
 
         for device in DEVICES:
             try:
@@ -206,6 +210,7 @@ def process_devices():
 
                     avg = mean(values)
                     observation_payload = create_observation_payload(key, avg)
+                    print(observation_payload)
 
                     # Fetch compost operation ID from Farm Calendar
                     compost_operation_id = get_compost_operation_id(fc_token)
@@ -214,7 +219,10 @@ def process_devices():
                     post_success = post_observation_to_fc(compost_operation_id, observation_payload, fc_token)
 
                     if not post_success:
-                        insert_observation(device, post_success)
+                        insert_observation(
+                            observation_payload, device["id"], device["name"],
+                            asset["id"], compost_operation_id, post_success
+                        )
                     msg = "✅ Sent" if post_success else "❌ Stored unsent"
                     logging.info(f"{msg}: {device['name']} - {key}")
 
