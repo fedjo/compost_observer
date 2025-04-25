@@ -78,7 +78,6 @@ def get_asset_info(device_id, token):
         r = requests.get(url, headers=headers)
         r.raise_for_status()  # Raise error if the request fails
         relations = r.json()
-        # print(relations)
 
         # Look for the device-to-asset relationship
         for relation in relations:
@@ -189,13 +188,12 @@ def process_devices():
         return
 
     try:
-        resend_unsent()
+        # resend_unsent()
 
         for device in DEVICES:
             try:
                 telemetry = get_telemetry(device["id"], device["keys"], token)
                 asset = get_asset_info(device["id"], token)
-                # print(asset)
                 if not asset:
                     logging.warning(f"No asset for {device['id']}")
                     continue
@@ -209,13 +207,14 @@ def process_devices():
                     avg = mean(values)
                     observation_payload = create_observation_payload(key, avg)
 
-                    # sent = try_send(payload)
                     # Fetch compost operation ID from Farm Calendar
                     compost_operation_id = get_compost_operation_id(fc_token)
 
                     # Post the observation to the correct endpoint on FC
                     post_success = post_observation_to_fc(compost_operation_id, observation_payload, fc_token)
 
+                    if not post_success:
+                        insert_observation(device, post_success)
                     msg = "✅ Sent" if post_success else "❌ Stored unsent"
                     logging.info(f"{msg}: {device['name']} - {key}")
 
