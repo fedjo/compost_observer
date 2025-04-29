@@ -13,6 +13,8 @@ def init_db():
                 pile_id TEXT,
                 variable TEXT,
                 mean_value REAL,
+                min_value REAL,
+                max_value REAL,
                 date TEXT,
                 sent INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP

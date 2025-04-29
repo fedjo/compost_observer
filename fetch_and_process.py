@@ -95,20 +95,20 @@ def get_asset_info(device_id, token):
         return None
 
 # Function to create the observation payload
-def create_observation_payload(key, avg):
+def create_observation_payload(key, minn, maxx, avg):
     # Determine the observed property and unit based on the variable (key)
     observed_property = ""
     unit = ""
 
-    if any(e in key for e in ("TEMP" or "temperature")):  # For temperature
+    if any(e in key for e in ("TEMP", "temperature")):  # For temperature
         observed_property = "https://vocab.nerc.ac.uk/standard_name/air_temperature/"
         unit = "http://qudt.org/vocab/unit/DEG_C"
         activity_type_id = f'{TEMP_ACTIVITY_TYPE_ID}'
-    elif any(e in key for e in ("water" or "moisture")):  # For humidity
+    elif any(e in key for e in ("water", "moisture")):  # For humidity
         observed_property = "http://vocab.nerc.ac.uk/standard_name/moisture_content_of_soil_layer/"
         unit = "http://qudt.org/vocab/unit/PERCENT"
         activity_type_id = f'{HUMIDITY_ACTIVITY_TYPE_ID}'
-    elif any(e in key for e in  ("PH"  "pH")):  # For pH
+    elif any(e in key for e in  ("PH", "pH")):  # For pH
         observed_property = "http://vocab.nerc.ac.uk/standard_name/pH_of_soil_layer/"
         unit = "http://qudt.org/vocab/unit/UNITLESS"
         activity_type_id = f'{PH_ACTIVITY_TYPE_ID}'
@@ -119,6 +119,7 @@ def create_observation_payload(key, avg):
         "@type": "Observation",
         "observedProperty": observed_property,
         "activityType": f"urn:farmcalendar:FarmActivityType:{activity_type_id}",
+        "details": f"Values range from MIN: {minn} to MAX: {maxx}",
         "phenomenonTime": phenomenon_time,
         "hasResult": {
             "@type": "QuantityValue",
@@ -133,7 +134,8 @@ def insert_observation(payload, device_id, device_name, pile_id, assset_name, se
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
             '''
-            INSERT INTO observations (device_id, device_name, asset_id, pile_id, variable, mean_value, date, sent)
+            INSERT INTO observations (device_id, device_name, asset_id, pile_id, variable, \
+                mean_value, min_value, max_value, date, sent)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             (
@@ -143,6 +145,8 @@ def insert_observation(payload, device_id, device_name, pile_id, assset_name, se
                 assset_name,
                 payload["observedProperty"],
                 payload["hasResult"]["hasValue"],
+                float(payload["details"].split("MIN:")[1].split("to")[0].strip()),
+                float(payload["details"].split("MAX:")[1].strip()),
                 payload["phenomenonTime"],
                 int(sent)
             )
@@ -170,7 +174,7 @@ def resend_unsent():
     with sqlite3.connect(DB_PATH) as conn:
         rows = conn.execute("SELECT * FROM observations WHERE sent = 0").fetchall()
         for row in rows:
-            payload = create_observation_payload(row[5], row[6])
+            payload = create_observation_payload(row[5], row[7], row[8], row[6])
             payload["phenomenonTime"] = row[7]
             print(payload)
 
@@ -208,8 +212,8 @@ def process_devices():
                     if not values:
                         continue
 
-                    avg = mean(values)
-                    observation_payload = create_observation_payload(key, avg)
+                    stats = (min(values), max(values), mean(values))
+                    observation_payload = create_observation_payload(key, *stats)
                     print(observation_payload)
 
                     # Fetch compost operation ID from Farm Calendar
@@ -242,8 +246,8 @@ def main():
         process_devices()
     else:
         scheduler = BlockingScheduler()
-        scheduler.add_job(process_devices, "cron", hour=23, minute=59)
-        logging.info("🔁 Scheduler started — job scheduled for 23:59 UTC daily")
+        scheduler.add_job(process_devices, "cron", hour=23, minute=00)
+        logging.info("🔁 Scheduler started — job scheduled for 23:00 UTC daily")
         try:
             scheduler.start()
         except (KeyboardInterrupt, SystemExit):
