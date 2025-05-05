@@ -6,11 +6,10 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-FC_URL = "https://fc.sip5.horizon-openagri.eu/api/v1"
+FC_URL = os.getenv("FARM_CALENDAR_URL2")
 FC_LOGIN_URL = "https://gk.sip5.horizon-openagri.eu/api/login/"
 FC_USERNAME = os.getenv("FC_USERNAME")
 FC_PASSWORD = os.getenv("FC_PASSWORD")
-PILE_NAME = os.getenv("PILE_NAME")  # This is the pile name for filtering compost operations
 
 # Function to login to Farm Calendar API and get JWT token
 def login_to_fc():
@@ -28,7 +27,7 @@ def login_to_fc():
         return None
 
 # Function to fetch the compost operation ID from Farm Calendar
-def get_compost_operation_id(token):
+def get_compost_operation_details(pile_name, token):
     headers = {"Authorization": f"Bearer {token}"}
     compost_operations_url = f"{FC_URL}/CompostOperations/"
     try:
@@ -39,12 +38,19 @@ def get_compost_operation_id(token):
 
         # Filter compost operations based on pile_name
         for compost in compost_operations["@graph"]:
-            if "isOperatedOn" in compost and compost["isOperatedOn"].get("@id") == f"urn:farmcalendar:CompostPile:{PILE_NAME}":
+            if "isOperatedOn" in compost and compost["isOperatedOn"].get("@id") == f"urn:farmcalendar:CompostPile:{pile_name}":
                 compost_id = compost["@id"].split(":")[-1]  # Extract the compost operation ID
                 logging.info(f"Found compost operation ID: {compost_id}")
-                return compost_id
+                start = compost.get("hasStartDatetime")
+                end = compost.get("hasEndDatetime")
 
-        logging.warning(f"No compost operation found for pile {PILE_NAME}")
+                if not start or not end:
+                    logging.warning(f"Missing start or end date for {pile_name}")
+                    return None
+
+                return (compost_id, start, end)
+
+        logging.warning(f"No compost operation found for pile {pile_name}")
         return None
     except requests.exceptions.RequestException as e:
         logging.error(f"Error fetching compost operations: {e}")
