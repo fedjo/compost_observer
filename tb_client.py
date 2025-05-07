@@ -1,4 +1,5 @@
 import os
+from typing import Dict
 import requests
 import datetime
 import logging
@@ -75,3 +76,18 @@ def get_asset_info(device_id, token):
         # Log any error encountered during the request
         logging.error(f"Failed to fetch asset info for {device_id}: {e}")
         return None
+
+
+def post_recommendation_to_tb(asset_id, recommendations: Dict, token):
+    url = f"{TB_URL}/api/plugins/telemetry/ASSET/{asset_id}/timeseries/ANY"
+    headers = {
+        "Content-Type": "application/json",
+        "X-Authorization": f"Bearer {token}"
+    }
+    response = requests.post(url, json=recommendations, headers=headers)
+    response.raise_for_status()
+
+    if not response.ok:
+        return False
+
+    return True
