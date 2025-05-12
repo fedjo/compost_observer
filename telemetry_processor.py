@@ -1,15 +1,14 @@
 import datetime
 import logging
 from typing import Any, Dict, List
-import requests
 from statistics import mean
 import numpy as np
 
 from db import insert_observation, resend_unsent
 from device_config import DEVICES
 from observation import create_observation_payload
-from tb_client import login_tb, logout_tb, get_telemetry, get_asset_info, post_recommendation_to_tb
-from fc_client import get_compost_operation_details, post_observation_to_fc
+from tb_client import get_asset_attributes, get_devices_by_asset, login_tb, logout_tb, get_telemetry, get_asset_info, post_recommendation_to_tb
+from fc_client import post_observation_to_fc
 
 
 def process_telemetry_for_pile(compost_operation_id, fc_token):
@@ -56,48 +55,54 @@ def process_telemetry_for_pile(compost_operation_id, fc_token):
         logout_tb(token)
 
 
-def create_recommendation_for_pile():
-    logging.info(f"🔁 Running recommendation analysis for Compost Pile")
+def create_recommendation_for_pile(asset_id):
+    logging.info(f"🔁 Running recommendation analysis for Compost Pile: {asset_id}")
     token = login_tb()
     if not token:
         return
 
     try:
         daily_stats = {}
-        for device in DEVICES:
-                telemetry = get_telemetry(device["id"], device["keys"], token)
-                asset = get_asset_info(device["id"], token)
-                if not asset:
-                    logging.warning(f"No asset for {device['id']}")
-                    return
 
-                for key in device["keys"]:
-                    datapoints = telemetry.get(key, [])
-                    values = [float(dp["value"]) for dp in datapoints if "value" in dp]
-                    if not values:
-                        continue
+        for device_name in get_devices_by_asset(asset_id, token):
+            # Look up telemetry keys from DEVICES
+            config = next((d for d in DEVICES if d["name"] == device_name), None)
+            if not config:
+                logging.warning(f"No config for device {device_name}, skipping")
+                continue
 
-                    daily_stats[key] = {
-                        'min': np.min(values),
-                        'max': np.max(values),
-                        'avg': np.mean(values),
-                        'std': np.std(values)
+            keys = config["keys"]
+            telemetry = get_telemetry(config["id"], keys, token)
 
-                    }
+            for key in keys:
+                datapoints = telemetry.get(key, [])
+                values = [float(dp["value"]) for dp in datapoints if "value" in dp]
+                if not values:
+                    continue
 
-        start_date = datetime.datetime.now() - datetime.timedelta(days = 3)
-        materials = ["grass clippings", "twigs", "wood chips"]
+                daily_stats[key] = {
+                    'min': np.min(values),
+                    'max': np.max(values),
+                    'avg': np.mean(values),
+                    'std': np.std(values)
+                }
+
+        # Get server-side attributes
+        asset_attrs = get_asset_attributes(asset_id, token)
+        start_date = datetime.datetime.fromtimestamp(asset_attrs.get("start_date") / 1000)
+        materials_str = asset_attrs.get("materials")
+
+        # Parse attributes
+        materials = [m.strip() for m in materials_str.split(",")] if materials_str else None
         results = analyze_compost_status(daily_stats, start_date, materials, [15.2], [10], [4.3])
 
-        # Post the observation to the correct endpoint on FC
-        post_success = post_recommendation_to_tb(asset["id"], results, token)
+        post_success = post_recommendation_to_tb(asset_id, results, token)
 
         msg = "✅ Sent" if post_success else "❌ Stored unsent"
-        logging.info(f"{msg}: {device['name']} - {key}")
-
+        logging.info(f"{msg}: asset {asset_id}")
 
     except Exception as e:
-        logging.error(f"Error processing: {e}")
+        logging.error(f"Error processing asset {asset_id}: {e}")
 
 
 def analyze_compost_status(
@@ -115,6 +120,7 @@ def analyze_compost_status(
 
     # Compost Age in days
     compost_age_days = (datetime.datetime.utcnow() - start_date).days
+
     # Compost speed factor
     speed_factor = classify_materials(compost_materials)
     # Compost Phase based on average temperature and moisture

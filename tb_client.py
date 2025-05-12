@@ -52,6 +52,36 @@ def get_telemetry(device_id, keys, token):
     return r.json()
 
 
+def get_devices_by_asset(asset_id, token):
+    url = f"{TB_URL}/api/relations/info?fromId={asset_id}&fromType=ASSET"
+    headers = {"X-Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    
+    if response.ok:
+        relations = response.json()
+        device_names = []
+        for relation in relations:
+            if relation["to"]["entityType"] == "DEVICE":
+                device_names.append(relation["toName"])
+        return device_names
+    else:
+        logging.error(f"Failed to fetch relations for asset {asset_id}")
+        return []
+
+
+
+def get_asset_attributes(asset_id, token):
+    url = f"{TB_URL}/api/plugins/telemetry/ASSET/{asset_id}/values/attributes/SERVER_SCOPE"
+    headers = {"X-Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    if response.ok:
+        attr_list = response.json()
+        return {attr["key"]: attr["value"] for attr in attr_list}
+    else:
+        logging.error(f"Failed to fetch attributes for asset {asset_id}")
+        return {}
+
+
 def get_asset_info(device_id, token):
     headers = {"X-Authorization": f"Bearer {token}"}
     url = f"{TB_URL}/api/relations?toId={device_id}&toType=DEVICE"

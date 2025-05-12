@@ -1,3 +1,4 @@
-requests
-python-dotenv
-apscheduler
+APScheduler==3.11.0
+numpy==2.2.5
+python-dotenv==1.1.0
+requests==2.32.3
