@@ -39,13 +39,14 @@ def schedule_for_pile(pile_name):
     logging.info(f"📆 Scheduled job for {pile_name} from period {start} - {end} at 23:00 UTC daily.")
 
 
-def schedule_for_tb_piles():
-    job_id = f"obs_TB_monitor"
+def schedule_for_tb_piles(asset_id):
+    job_id = f"obs_{asset_id}"
     scheduler.add_job(
         func=create_recommendation_for_pile,
         trigger='interval',
         minutes=5,
         id=job_id,
+        args=[asset_id],
         start_date=datetime.datetime.now(),
         # end_date=end,
         replace_existing=True
@@ -58,10 +59,12 @@ def start_scheduler():
     scheduler.start()
     logging.info("🟢 Scheduler running. Awaiting compost pile IDs.")
 
-    schedule_for_tb_piles()
     try:
         while True:
-            pile_name = input("Enter Compost Pile ID: ").strip()
+            asset_id = input("Enter Thingsboard Pile ID: ").strip()
+            if asset_id:
+                schedule_for_tb_piles(asset_id)
+            pile_name = input("Enter Farm Calendar Pile Name: ").strip()
             if pile_name:
                 schedule_for_pile(pile_name)
     except (KeyboardInterrupt, SystemExit):
