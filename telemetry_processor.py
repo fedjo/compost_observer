@@ -12,7 +12,7 @@ from fc_client import post_observation_to_fc
 
 
 def process_telemetry_for_pile(compost_operation_id, fc_token):
-    logging.info(f"🔁 Running telemetry process for Compost Operation: {compost_operation_id}")
+    logging.info(f"🔁 Running collection of daily stats for FarmCalendar Compost Operation: {compost_operation_id}")
     token = login_tb()
     if not token:
         return
@@ -46,7 +46,7 @@ def process_telemetry_for_pile(compost_operation_id, fc_token):
                             observation_payload, device["id"], device["name"],
                             asset["id"], compost_operation_id, post_success
                         )
-                    msg = "✅ Sent" if post_success else "❌ Stored unsent"
+                    msg = "✅ Sent statistics" if post_success else "❌ Stored unsent statistics"
                     logging.info(f"{msg}: {device['name']} - {key}")
 
             except Exception as e:
@@ -98,7 +98,7 @@ def create_recommendation_for_pile(asset_id):
 
         post_success = post_recommendation_to_tb(asset_id, results, token)
 
-        msg = "✅ Sent" if post_success else "❌ Stored unsent"
+        msg = "✅ Sent Recommendation" if post_success else "❌ Recommendation not sent"
         logging.info(f"{msg}: asset {asset_id}")
 
     except Exception as e:

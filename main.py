@@ -4,7 +4,7 @@ import logging
 from db import create_tables, record_composite_id
 from fc_client import get_compost_operation_details, login_to_fc
 from scheduler import start_scheduler
-from telemetry_processor import process_telemetry_for_pile
+from telemetry_processor import create_recommendation_for_pile, process_telemetry_for_pile
 
 
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
@@ -13,13 +13,19 @@ logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--now", action="store_true", help="Run processing immediately (in addition to scheduled)")
+    parser.add_argument("--reco", action="store_true", help="Start a recommendation process for a pile immediately")
+    parser.add_argument("--fc-obs", action="store_true", help="Send daily stats from pile to farm calendar immediately")
     args = parser.parse_args()
 
-    if args.now:
+    if args.reco:
+        logging.info("⚡ Start a recommendation process for a pile immediately")
+        asset_id = input("Enter Thingsboard Pile ID: ").strip()
+        if asset_id:
+            create_recommendation_for_pile(asset_id)
+    elif args.fc_obs:
         create_tables()
-        logging.info("⚡ Running process_devices() manually with --now")
-        pile_name = input("Enter Compost Pile Name: ").strip()
+        logging.info("⚡ Send daily stats from pile to farm calendar immediately")
+        pile_name = input("Enter Farm Calendar Pile Name: ").strip()
         # Login to Farm Calendar and get the JWT token
         fc_token = login_to_fc()
         if not fc_token:
