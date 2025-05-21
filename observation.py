@@ -32,6 +32,7 @@ def create_observation_payload(key, minn, maxx, avg):
         "activityType": f"urn:farmcalendar:FarmActivityType:{act}",
         "details": f"Values range from MIN: {minn} to MAX: {maxx}",
         "phenomenonTime": datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H:%MZ'),
+        "hasEndDatetime": datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H:%MZ'),
         "hasResult": {
             "@type": "QuantityValue",
             "hasValue": avg,
